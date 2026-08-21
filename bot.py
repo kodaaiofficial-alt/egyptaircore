@@ -1,9 +1,9 @@
 """
-EgyptAir Customer Core Discord Bot
+Discord bot for Roblox game operations.
 
-Handles operational commands for the EgyptAir Roblox game community,
-including modmail ticket creation, event card announcements, and
-server unlock notifications.
+Provides simple operational commands: a health-check ping, modmail
+ticket creation, event announcement cards, and Roblox server unlock
+announcements.
 """
 
 import logging
@@ -15,11 +15,11 @@ from discord.ext import commands
 
 import config
 
-logger = logging.getLogger("egyptair-bot")
+logger = logging.getLogger("discord-bot")
 
 
-class EgyptAirBot(commands.Bot):
-    """Custom bot subclass with lifecycle hooks and shared state."""
+class OperationsBot(commands.Bot):
+    """Bot subclass with lifecycle hooks."""
 
     def __init__(self):
         super().__init__(
@@ -29,15 +29,10 @@ class EgyptAirBot(commands.Bot):
         )
 
     async def setup_hook(self):
-        logger.info("Running bot setup hook...")
-        try:
-            synced = await self.tree.sync()
-            logger.info("Synced %d application command(s).", len(synced))
-        except Exception:
-            logger.exception("Failed to sync application commands.")
+        logger.info("Bot setup complete. Prefix: %s", config.COMMAND_PREFIX)
 
 
-bot = EgyptAirBot()
+bot = OperationsBot()
 
 
 # ==========================================================
@@ -50,13 +45,11 @@ async def on_ready():
     logger.info("Connected to %d guild(s).", len(bot.guilds))
 
     try:
-        await bot.change_presence(
-            activity=discord.Game(name=config.BOT_ACTIVITY)
-        )
+        await bot.change_presence(activity=discord.Game(name=config.BOT_ACTIVITY))
     except Exception:
         logger.exception("Failed to set bot presence.")
 
-    logger.info("%s is ready to operate.", config.AIRLINE_NAME)
+    logger.info("Bot is ready.")
 
 
 @bot.event
@@ -70,6 +63,14 @@ async def on_command_error(ctx: commands.Context, error: commands.CommandError):
 
     if isinstance(error, commands.MissingPermissions):
         await ctx.send(f"{config.CROSS} You do not have permission to run this command.")
+        return
+
+    if isinstance(error, commands.MissingRole):
+        await ctx.send(f"{config.CROSS} You do not have the required role to run this command.")
+        return
+
+    if isinstance(error, commands.NoPrivateMessage):
+        await ctx.send(f"{config.CROSS} This command can only be used in a server.")
         return
 
     if isinstance(error, commands.CommandOnCooldown):
@@ -92,6 +93,17 @@ async def on_error(event_method: str, *args, **kwargs):
 
 
 # ==========================================================
+# PING
+# ==========================================================
+
+@bot.command(name="ping")
+async def ping(ctx: commands.Context):
+    """Check that the bot is alive and measure latency."""
+    latency_ms = round(bot.latency * 1000)
+    await ctx.send(f"{config.TICK} Pong! Latency: {latency_ms}ms")
+
+
+# ==========================================================
 # MODMAIL
 # ==========================================================
 
@@ -100,10 +112,15 @@ async def on_error(event_method: str, *args, **kwargs):
 async def modmail(ctx: commands.Context, *, message: str = None):
     """Create a modmail support ticket for the requesting member."""
     if not message:
-        await ctx.send(f"{config.CROSS} Please describe your issue, e.g. `!modmail I need help with my flight.`")
+        await ctx.send(f"{config.CROSS} Please describe your issue, e.g. `!modmail I need help.`")
         return
 
     guild = ctx.guild
+
+    if config.TICKET_CATEGORY_ID is None:
+        await ctx.send(f"{config.CROSS} Modmail is not configured. Please contact staff directly.")
+        return
+
     category = guild.get_channel(config.TICKET_CATEGORY_ID)
 
     if category is None or not isinstance(category, discord.CategoryChannel):
@@ -117,9 +134,10 @@ async def modmail(ctx: commands.Context, *, message: str = None):
             ctx.author: discord.PermissionOverwrite(view_channel=True, send_messages=True),
         }
 
-        staff_role = guild.get_role(config.MODMAIL_STAFF_ROLE_ID)
-        if staff_role:
-            overwrites[staff_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+        if config.MODMAIL_STAFF_ROLE_ID is not None:
+            staff_role = guild.get_role(config.MODMAIL_STAFF_ROLE_ID)
+            if staff_role:
+                overwrites[staff_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
 
         ticket_channel = await guild.create_text_channel(
             name=f"ticket-{ctx.author.name}".lower().replace(" ", "-"),
@@ -155,9 +173,15 @@ async def modmail(ctx: commands.Context, *, message: str = None):
 # ==========================================================
 
 @bot.command(name="eventcard")
-@commands.has_role(config.OPERATIONS_ROLE_ID)
+@commands.guild_only()
 async def eventcard(ctx: commands.Context, title: str, *, description: str):
     """Create and post an event announcement card."""
+    if config.OPERATIONS_ROLE_ID is not None:
+        role = ctx.guild.get_role(config.OPERATIONS_ROLE_ID)
+        if role is None or role not in ctx.author.roles:
+            await ctx.send(f"{config.CROSS} You do not have permission to run this command.")
+            return
+
     try:
         embed = discord.Embed(
             title=f"{config.ANNOUNCE} {title}",
@@ -180,9 +204,15 @@ async def eventcard(ctx: commands.Context, title: str, *, description: str):
 # ==========================================================
 
 @bot.command(name="serverunlock")
-@commands.has_role(config.OPERATIONS_ROLE_ID)
+@commands.guild_only()
 async def serverunlock(ctx: commands.Context, server_name: str, *, notes: str = "No additional notes."):
     """Announce that a Roblox game server has unlocked."""
+    if config.OPERATIONS_ROLE_ID is not None:
+        role = ctx.guild.get_role(config.OPERATIONS_ROLE_ID)
+        if role is None or role not in ctx.author.roles:
+            await ctx.send(f"{config.CROSS} You do not have permission to run this command.")
+            return
+
     try:
         embed = discord.Embed(
             title=f"{config.UNLOCK} Server Unlocked",
