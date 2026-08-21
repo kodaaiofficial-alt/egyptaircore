@@ -1,5 +1,15 @@
+"""
+Configuration for the Discord bot.
+
+All configuration values are loaded from environment variables so the
+bot can be safely configured per-deployment (e.g. via Railway variables)
+without touching source code. Optional settings fall back to sensible
+defaults and never raise on import, even if unset.
+"""
+
 import logging
 import os
+from typing import Optional
 
 import discord
 from dotenv import load_dotenv
@@ -16,13 +26,26 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()],
 )
 
-logger = logging.getLogger("egyptair-bot")
+logger = logging.getLogger("discord-bot")
+
+
+def _get_int_env(name: str) -> Optional[int]:
+    """Safely parse an optional integer environment variable."""
+    value = os.getenv(name)
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning("Environment variable %s=%r is not a valid integer. Ignoring.", name, value)
+        return None
+
 
 # ==========================================================
-# BOT
+# BOT CORE
 # ==========================================================
 
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN")
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not DISCORD_TOKEN:
     logger.warning(
@@ -30,114 +53,44 @@ if not DISCORD_TOKEN:
         "or .env file before starting the bot."
     )
 
-# Kept for backwards compatibility with any code still referencing TOKEN.
-TOKEN = DISCORD_TOKEN
-
 COMMAND_PREFIX = os.getenv("COMMAND_PREFIX", "!")
 
 INTENTS = discord.Intents.default()
 INTENTS.message_content = True
-INTENTS.members = True
 INTENTS.guilds = True
 
-GUILD_ID = 1363962490542620805
+BOT_ACTIVITY = os.getenv("BOT_ACTIVITY", "!help")
 
 # ==========================================================
-# CHANNELS
+# OPTIONAL FEATURE CONFIGURATION
 # ==========================================================
+# These are optional. If unset, the related commands will respond with a
+# friendly message instead of failing.
 
-DEPARTURE_CHANNEL_ID = 1533788808510963763
+# Category channel that new modmail ticket channels are created under.
+TICKET_CATEGORY_ID = _get_int_env("TICKET_CATEGORY_ID")
 
-TICKET_CATEGORY_ID = 1533790870380347463
+# Role that gets access to modmail ticket channels in addition to the author.
+MODMAIL_STAFF_ROLE_ID = _get_int_env("MODMAIL_STAFF_ROLE_ID")
 
-CLOSED_TICKET_LOG_CHANNEL_ID = 1533791496573030460
-
-# ==========================================================
-# ROLES
-# ==========================================================
-
-OPERATIONS_ROLE_ID = 1533790969697276004
-
-MODMAIL_STAFF_ROLE_ID = 1533791008721076234
+# Role required to run staff-only commands (eventcard, serverunlock).
+OPERATIONS_ROLE_ID = _get_int_env("OPERATIONS_ROLE_ID")
 
 # ==========================================================
-# BOT SETTINGS
+# EMBED / MESSAGE STYLING
 # ==========================================================
 
-DATABASE_NAME = "database.db"
+EMBED_COLOR = 0x5865F2
 
-TIMEZONE = "Africa/Cairo"
+FOOTER_TEXT = os.getenv("FOOTER_TEXT", "Operations Bot")
 
-BOT_ACTIVITY = "EgyptAir"
-
-AIRLINE_NAME = "EgyptAir"
-
-AIRLINE_SHORT = "MS"
-
-COUNTRY = "Egypt"
-
-COUNTRY_FLAG = "🇪🇬"
-
-# ==========================================================
-# EMBED
-# ==========================================================
-
-EMBED_COLOR = 0x002F6C
-
-FOOTER_TEXT = "EgyptAir Customer Core"
-
-# ==========================================================
-# EMOJIS
-# ==========================================================
-
-NOTIFICATION = "<:Notification:1533792741903962112>"
-
-INFORMATION = "<:Information:1533792771259760691>"
-
-TICK = "<:Tick:1533787700459733062>"
-
-CROSS = "<:Cross:1533787729198841866>"
-
-DEVELOPMENT = "<:Development:1533784618556461086>"
-
-PERSONNEL = "<:Personnel:1533785053220438146>"
-
-FOLDER = "<:Folder:1533784800408764517>"
-
-NETWORK = "<:Network:1533784832427954256>"
-
-SCHEDULE = "<:Schedule:1533784526017396746>"
-
-ANNOUNCE = "<:Announce:1533784495713550418>"
-
-FLAG = "<:Flag:1533790147831795754>"
-
-LOCK = "<:Lock:1533792193846841457>"
-
-UNLOCK = "<:Unlock:1533792215363489944>"
-
-TAIL = "<:tail:1533789675276210217>"
-
-# ==========================================================
-# MODMAIL
-# ==========================================================
+TICK = "✅"
+CROSS = "❌"
+ANNOUNCE = "📢"
+UNLOCK = "🔓"
 
 MODMAIL_WELCOME = (
-    "Welcome aboard EgyptAir! 🇪🇬\n\n"
-    "Thank you for contacting EgyptAir Customer Support.\n"
-    "Please describe your issue below and a member of our team "
-    "will assist you as soon as possible."
+    "Thanks for reaching out!\n\n"
+    "A member of staff will be with you shortly. "
+    "Please describe your issue in as much detail as possible."
 )
-
-TICKET_CLOSED_MESSAGE = (
-    "Your EgyptAir support ticket has now been closed.\n"
-    "Thank you for contacting EgyptAir."
-)
-
-# ==========================================================
-# FLIGHTS
-# ==========================================================
-
-DEFAULT_FLIGHT_DURATION = 60  # Minutes
-
-MAX_FLIGHT_DURATION = 60
