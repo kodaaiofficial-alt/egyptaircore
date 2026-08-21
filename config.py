@@ -45,12 +45,13 @@ def _get_int_env(name: str) -> Optional[int]:
 # BOT CORE
 # ==========================================================
 
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN")
 
 if not DISCORD_TOKEN:
     logger.warning(
-        "DISCORD_TOKEN is not set. Please add it to your environment "
-        "or .env file before starting the bot."
+        "DISCORD_TOKEN is not set. The bot will not attempt to log in to "
+        "Discord until it is configured. Add DISCORD_TOKEN (or TOKEN) to "
+        "your environment or .env file, then redeploy/restart the bot."
     )
 
 COMMAND_PREFIX = os.getenv("COMMAND_PREFIX", "!")
