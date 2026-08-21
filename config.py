@@ -1,10 +1,44 @@
+import logging
 import os
+
+import discord
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# ==========================================================
+# LOGGING
+# ==========================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+
+logger = logging.getLogger("egyptair-bot")
 
 # ==========================================================
 # BOT
 # ==========================================================
 
-TOKEN = os.getenv("TOKEN")
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN")
+
+if not DISCORD_TOKEN:
+    logger.warning(
+        "DISCORD_TOKEN is not set. Please add it to your environment "
+        "or .env file before starting the bot."
+    )
+
+# Kept for backwards compatibility with any code still referencing TOKEN.
+TOKEN = DISCORD_TOKEN
+
+COMMAND_PREFIX = os.getenv("COMMAND_PREFIX", "!")
+
+INTENTS = discord.Intents.default()
+INTENTS.message_content = True
+INTENTS.members = True
+INTENTS.guilds = True
 
 GUILD_ID = 1363962490542620805
 
