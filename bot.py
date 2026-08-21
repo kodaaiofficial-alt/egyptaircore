@@ -7,8 +7,11 @@ announcements.
 """
 
 import logging
-import sys
+import os
+import threading
+import time
 import traceback
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import discord
 from discord.ext import commands
@@ -232,22 +235,81 @@ async def serverunlock(ctx: commands.Context, server_name: str, *, notes: str = 
 
 
 # ==========================================================
+# HEALTHCHECK SERVER
+# ==========================================================
+# Railway (and similar platforms) expect the process to stay alive and,
+# optionally, respond to HTTP healthchecks. This lightweight server lets
+# the deployment report healthy even while we are waiting for a valid
+# DISCORD_TOKEN to be configured, or if the bot fails to log in.
+
+class _HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"ok")
+
+    def log_message(self, format, *args):  # noqa: A002 - silence default logging
+        pass
+
+
+def _start_healthcheck_server():
+    port = int(os.getenv("PORT", "8080"))
+    try:
+        server = HTTPServer(("0.0.0.0", port), _HealthCheckHandler)
+    except OSError:
+        logger.warning("Could not bind healthcheck server on port %s.", port)
+        return
+
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    logger.info("Healthcheck server listening on port %s.", port)
+
+
+def _wait_forever_for_token():
+    """Keep the process alive so the deployment doesn't restart-loop."""
+    logger.warning(
+        "Waiting for DISCORD_TOKEN to be set. Set the DISCORD_TOKEN "
+        "environment variable (Railway > Variables) and redeploy or "
+        "restart the service to start the bot."
+    )
+    while not config.DISCORD_TOKEN:
+        time.sleep(30)
+        # Re-read in case the environment was updated without a restart.
+        config.DISCORD_TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN")
+
+    logger.info("DISCORD_TOKEN detected. Starting bot.")
+    _run_bot()
+
+
+def _run_bot():
+    try:
+        bot.run(config.DISCORD_TOKEN, log_handler=None)
+    except discord.LoginFailure:
+        logger.error(
+            "Failed to log in: DISCORD_TOKEN is invalid. The process will "
+            "stay alive; update DISCORD_TOKEN with a valid value and "
+            "restart the service."
+        )
+        while True:
+            time.sleep(3600)
+    except Exception:
+        logger.exception("Bot crashed with an unexpected error.")
+        raise
+
+
+# ==========================================================
 # ENTRYPOINT
 # ==========================================================
 
 def main():
-    if not config.DISCORD_TOKEN:
-        logger.critical("DISCORD_TOKEN is not set. Exiting.")
-        sys.exit(1)
+    _start_healthcheck_server()
 
-    try:
-        bot.run(config.DISCORD_TOKEN, log_handler=None)
-    except discord.LoginFailure:
-        logger.critical("Failed to log in: invalid DISCORD_TOKEN.")
-        sys.exit(1)
-    except Exception:
-        logger.exception("Bot crashed with an unexpected error.")
-        sys.exit(1)
+    if not config.DISCORD_TOKEN:
+        _wait_forever_for_token()
+        return
+
+    _run_bot()
 
 
 if __name__ == "__main__":
